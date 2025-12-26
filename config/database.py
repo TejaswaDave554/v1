@@ -1,97 +1,235 @@
-"""
-CSS Styles - Minimal Version
-"""
+import os
+import uuid
+import pymysql
+from dotenv import load_dotenv
 
-import streamlit as st
+load_dotenv()
 
-def load_custom_styles():
-    """Load minimal custom CSS styles"""
-    
-    is_dark = st.session_state.get('dark_theme', False)
-    
-    st.markdown(f"""
-    <style>
-        /* Only the custom components that were working fine */
-        .feature-card {{
-            background: {'#262730' if is_dark else '#ffffff'};
-            color: {'#ffffff' if is_dark else '#262730'};
-            padding: 1.5rem;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            margin: 1rem 0;
-            border-left: 4px solid #667eea;
-            border: 1px solid {'#4a4a4a' if is_dark else '#e0e0e0'};
-        }}
+class MySQLDB:
+    def __init__(self):
+        self.host = os.getenv('MYSQL_HOST', 'localhost')
+        self.user = os.getenv('MYSQL_USER', 'root')
+        self.password = os.getenv('MYSQL_PASSWORD', '')
+        self.database = os.getenv('MYSQL_DATABASE', 'chaalak_db')
+        self.port = int(os.getenv('MYSQL_PORT', 3306))
 
-        .hero-section {{
-            text-align: center;
-            padding: 3rem 1rem;
-            background: linear-gradient(rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
-            border-radius: 15px;
-            margin-bottom: 2rem;
-            color: {'#ffffff' if is_dark else '#262730'};
-        }}
+    def get_connection(self):
+        try:
+            conn = pymysql.connect(
+                host=self.host,
+                user=self.user,
+                password=self.password,
+                database=self.database,
+                port=self.port,
+                connect_timeout=5,
+                cursorclass=pymysql.cursors.DictCursor
+            )
+            return conn
+        except Exception as e:
+            import sys
+            print(f"DATABASE CONNECTION ERROR: {e}", file=sys.stderr, flush=True)
+            raise ConnectionError(f"Database connection failed: {e}")
 
-        .stats-card {{
-            text-align: center;
-            padding: 1rem;
-            background: {'#262730' if is_dark else '#ffffff'};
-            color: {'#ffffff' if is_dark else '#262730'};
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            border: 1px solid {'#4a4a4a' if is_dark else '#e0e0e0'};
-        }}
+    def fetch_all(self, query: str, params=tuple()):
+        try:
+            conn = self.get_connection()
+            try:
+                cur = conn.cursor()
+                cur.execute(query, params)
+                return cur.fetchall()
+            finally:
+                try:
+                    cur.close()
+                except:
+                    pass
+                conn.close()
+        except Exception as e:
+            raise Exception(f"Database query failed: {e}")
 
-        .testimonial {{
-            background: {'#262730' if is_dark else '#f8f9fa'};
-            color: {'#ffffff' if is_dark else '#262730'};
-            padding: 1.5rem;
-            border-radius: 10px;
-            border-left: 4px solid #28a745;
-            margin: 1rem 0;
-            font-style: italic;
-        }}
+    def fetch_one(self, query: str, params=tuple()):
+        rows = self.fetch_all(query, params)
+        return rows[0] if rows else None
 
-        .price-card {{
-            background: {'#262730' if is_dark else '#ffffff'};
-            color: {'#ffffff' if is_dark else '#262730'};
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            text-align: center;
-            border: 2px solid transparent;
-            transition: all 0.3s;
-        }}
+    def execute(self, query: str, params=tuple()):
+        try:
+            conn = self.get_connection()
+            try:
+                cur = conn.cursor()
+                cur.execute(query, params)
+                conn.commit()
+                return cur.rowcount
+            finally:
+                try:
+                    cur.close()
+                except:
+                    pass
+                conn.close()
+        except Exception as e:
+            raise Exception(f"Database execution failed: {e}")
 
-        .price-card:hover {{
-            border-color: #667eea;
-            transform: translateY(-5px);
-        }}
+    def get_user_by_id(self, user_id: str):
+        return self.fetch_one(
+            "SELECT * FROM users WHERE id=%s AND is_active=1",
+            (user_id,)
+        )
 
-        .footer {{
-            background: #2c3e50;
-            color: white;
-            padding: 2rem;
-            border-radius: 10px;
-            margin-top: 3rem;
-            text-align: center;
-        }}
-        
-        /* Theme indicator */
-        .theme-indicator {{
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background: {'#333' if is_dark else '#fff'};
-            color: {'#fff' if is_dark else '#333'};
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 12px;
-            z-index: 1000;
-        }}
-    </style>
-    
-    <div class="theme-indicator">
-        {'🌙 Dark Mode' if is_dark else '☀️ Light Mode'}
-    </div>
-    """, unsafe_allow_html=True)
+    def get_user_by_username(self, username: str):
+        return self.fetch_one(
+            "SELECT * FROM users WHERE username=%s AND is_active=1",
+            (username,)
+        )
+
+    def create_user(self, user_data: dict):
+        user_id = user_data.get('id') or str(uuid.uuid4())
+        self.execute(
+            """INSERT INTO users 
+            (id, username, email, password_hash, phone, role, full_name, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (
+                user_id,
+                user_data['username'],
+                user_data['email'],
+                user_data['password_hash'],
+                user_data.get('phone'),
+                user_data.get('role', 'customer'),
+                user_data.get('full_name'),
+                user_data.get('is_active', True)
+            )
+        )
+        return user_id
+
+    def get_driver_by_user_id(self, user_id: str):
+        return self.fetch_one("SELECT * FROM drivers WHERE user_id=%s", (user_id,))
+
+    def create_driver(self, driver_data: dict):
+        driver_id = driver_data.get('id') or str(uuid.uuid4())
+        self.execute(
+            """INSERT INTO drivers 
+            (id, user_id, license_number, license_expiry, experience_years, rating, is_available)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (
+                driver_id,
+                driver_data['user_id'],
+                driver_data['license_number'],
+                driver_data['license_expiry'],
+                driver_data.get('experience_years', 0),
+                driver_data.get('rating', 5.00),
+                driver_data.get('is_available', True)
+            )
+        )
+        return driver_id
+
+    def create_booking(self, booking_data: dict):
+        booking_id = booking_data.get('id') or str(uuid.uuid4())
+        self.execute(
+            """INSERT INTO bookings 
+            (id, customer_id, driver_id, pickup_location, dropoff_location, 
+             pickup_datetime, service_type, vehicle_type, status, 
+             estimated_fare, actual_fare, special_instructions)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (
+                booking_id,
+                booking_data['customer_id'],
+                booking_data.get('driver_id'),
+                booking_data['pickup_location'],
+                booking_data['dropoff_location'],
+                booking_data['pickup_datetime'],
+                booking_data['service_type'],
+                booking_data['vehicle_type'],
+                booking_data.get('status', 'pending'),
+                booking_data['estimated_fare'],
+                booking_data.get('actual_fare'),
+                booking_data.get('special_instructions', '')
+            )
+        )
+        return booking_id
+
+    def get_bookings_by_customer(self, customer_id: str):
+        return self.fetch_all(
+            "SELECT * FROM bookings WHERE customer_id=%s ORDER BY created_at DESC",
+            (customer_id,)
+        )
+
+    def get_bookings_by_driver(self, driver_id: str):
+        return self.fetch_all(
+            "SELECT * FROM bookings WHERE driver_id=%s ORDER BY created_at DESC",
+            (driver_id,)
+        )
+
+    def get_all_bookings(self):
+        return self.fetch_all("SELECT * FROM bookings ORDER BY created_at DESC")
+
+    def get_all_users(self):
+        return self.fetch_all("SELECT id, username, email, phone, role, full_name, is_active, created_at FROM users ORDER BY created_at DESC")
+
+    def get_all_drivers_with_users(self):
+        return self.fetch_all(
+            """SELECT d.*, u.username, u.email, u.phone, u.full_name 
+            FROM drivers d 
+            JOIN users u ON d.user_id = u.id 
+            ORDER BY d.created_at DESC"""
+        )
+
+    def get_booking_stats(self):
+        return self.fetch_one(
+            """SELECT 
+            COUNT(*) as total_bookings,
+            SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed,
+            SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) as cancelled,
+            SUM(CASE WHEN status='completed' THEN estimated_fare ELSE 0 END) as total_revenue
+            FROM bookings"""
+        )
+
+    def get_pending_unassigned_bookings(self):
+        return self.fetch_all(
+            """SELECT * FROM bookings 
+            WHERE status='pending' AND driver_id IS NULL 
+            ORDER BY created_at DESC"""
+        )
+
+    def update_booking_status(self, booking_id: str, status: str, driver_id: str = None):
+        if driver_id is None:
+            return self.execute(
+                "UPDATE bookings SET status=%s WHERE id=%s",
+                (status, booking_id)
+            )
+        return self.execute(
+            "UPDATE bookings SET status=%s, driver_id=%s WHERE id=%s",
+            (status, driver_id, booking_id)
+        )
+
+    def delete_booking(self, booking_id: str):
+        return self.execute(
+            "DELETE FROM bookings WHERE id=%s",
+            (booking_id,)
+        )
+
+    def update_booking_rating(self, booking_id: str, rating: int, feedback: str = None):
+        return self.execute(
+            "UPDATE bookings SET rating=%s, feedback=%s WHERE id=%s",
+            (rating, feedback, booking_id)
+        )
+
+    def get_driver_average_rating(self, driver_id: str):
+        result = self.fetch_one(
+            "SELECT AVG(rating) as avg_rating, COUNT(rating) as total_ratings FROM bookings WHERE driver_id=%s AND rating IS NOT NULL",
+            (driver_id,)
+        )
+        return result if result else {'avg_rating': 0, 'total_ratings': 0}
+
+    def cancel_booking(self, booking_id: str):
+        return self.execute(
+            "UPDATE bookings SET status='cancelled' WHERE id=%s",
+            (booking_id,)
+        )
+
+    def read_table(self, table_name: str):
+        if table_name != 'bookings':
+            raise ValueError(f"Unsupported table_name: {table_name}")
+        return self.get_all_bookings()
+
+    def connect(self):
+        return self.get_connection()
+
+db = MySQLDB()

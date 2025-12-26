@@ -1,18 +1,10 @@
-"""
-Footer Component
-"""
-
 import streamlit as st
-from config.settings import AppConfig
 
 def render_footer():
-    """Render footer"""
-    st.markdown(f"""
-    <div class="footer">
-        <h3>🚗 Chaalak - Your Car, Our Expertise</h3>
-        <p>📧 {AppConfig.COMPANY_EMAIL} | 📞 {AppConfig.COMPANY_PHONE} | 🌐 {AppConfig.COMPANY_WEBSITE}</p>
-        <p style="margin-top: 1rem; opacity: 0.8;">
-            © 2025 Chaalak Inc. All rights reserved. | Privacy Policy | Terms of Service
-        </p>
-    </div>
+    st.divider()
+    st.markdown("""
+        <div style='text-align: center; padding: 2rem 0;'>
+            <p>© 2025 Chaalak. All rights reserved.</p>
+            <p>Contact: support@chaalak.com | 1-800-CHAALAK</p>
+        </div>
     """, unsafe_allow_html=True)
